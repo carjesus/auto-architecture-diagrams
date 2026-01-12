@@ -1,0 +1,39 @@
+{
+  "diagram": {
+    "title": "Application Architecture",
+    "filename": "architecture_diagram",
+    "format": "png",
+    "direction": "TB",
+    "show_preview": false
+  },
+  "style": {
+    "fontsize": "18",
+    "bgcolor": "white",
+    "splines": "ortho",
+    "nodesep": "1.5",
+    "ranksep": "2.5",
+    "pad": "1.0"
+  },
+  "detection": {
+    "source_paths": [
+      "src",
+      "app", 
+      "api",
+      "backend",
+      "server"
+    ],
+    "exclude_patterns": [
+      "__pycache__",
+      "*.pyc",
+      ".git",
+      "node_modules",
+      ".env"
+    ]
+  },
+  "ai_refinement": {
+    "enabled": true,
+    "analyze_relationships": true,
+    "suggest_groupings": true,
+    "improve_labels": true
+  }
+}

@@ -1,0 +1,185 @@
+name: Auto-Generate Architecture Diagram
+
+on:
+  push:
+    paths:
+      - 'src/**/*.py'
+      - 'app/**/*.py'
+      - 'api/**/*.py'
+      - 'backend/**/*.py'
+      - 'server/**/*.py'
+      - '*.py'
+      - 'requirements.txt'
+      - 'package.json'
+      - '.github/workflows/generate-diagram-auto.yml'
+    branches:
+      - main
+      - develop
+      - master
+  pull_request:
+    paths:
+      - 'src/**/*.py'
+      - 'app/**/*.py'
+      - 'api/**/*.py'
+      - 'backend/**/*.py'
+      - 'server/**/*.py'
+      - '*.py'
+      - 'requirements.txt'
+      - 'package.json'
+    branches:
+      - main
+      - develop
+      - master
+  workflow_dispatch:  # Permite ejecución manual
+  schedule:
+    - cron: '0 2 * * *'  # Ejecutar diariamente a las 2 AM UTC
+
+jobs:
+  analyze-and-generate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar Graphviz
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y graphviz
+
+      - name: Instalar dependencias Python
+        run: |
+          pip install diagrams
+
+      - name: Copiar scripts si no existen
+        run: |
+          # Solo copiar si los scripts no existen
+          if [ ! -f docs/diagrams/analyze_repo.py ]; then
+            echo "⚠️ Scripts no encontrados en docs/diagrams/"
+            echo "   Este workflow requiere que copies los scripts primero"
+            echo "   Ver: https://github.com/tu-usuario/auto-architecture-diagrams"
+            exit 1
+          fi
+
+      - name: Analizar repositorio
+        run: |
+          cd docs/diagrams
+          python analyze_repo.py
+        continue-on-error: true
+
+      - name: Analizar relaciones con AI
+        run: |
+          cd docs/diagrams
+          if [ -f analysis_result.json ]; then
+            echo "🤖 Ejecutando análisis de relaciones con AI..."
+            python ai_refiner.py || echo "⚠️ AI refiner falló, continuando sin refinamiento..."
+          else
+            echo "⚠️ analysis_result.json no encontrado, ejecutando analyze_repo.py primero..."
+            python analyze_repo.py
+            python ai_refiner.py || echo "⚠️ AI refiner falló, continuando sin refinamiento..."
+          fi
+        continue-on-error: true
+
+      - name: Generar architecture.py automáticamente (con AI)
+        run: |
+          cd docs/diagrams
+          echo "📝 Generando architecture.py..."
+          python generate_architecture.py
+          EXIT_CODE=$?
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "❌ ERROR: generate_architecture.py falló"
+            exit $EXIT_CODE
+          fi
+          echo "✅ architecture.py generado"
+          if [ ! -f architecture.py ]; then
+            echo "❌ ERROR: architecture.py no fue generado!"
+            exit 1
+          fi
+          echo "✅ architecture.py verificado"
+
+      - name: Probar generación de diagrama
+        run: |
+          cd docs/diagrams
+          echo "🧪 Ejecutando prueba de generación..."
+          python test_diagram.py || echo "⚠️ Test falló, continuando..."
+        continue-on-error: true
+
+      - name: Generar diagrama
+        run: |
+          echo "📊 Generando diagrama PNG..."
+          cd docs/diagrams
+          if [ ! -f architecture.py ]; then
+            echo "❌ ERROR: architecture.py no encontrado!"
+            exit 1
+          fi
+          python architecture.py
+          EXIT_CODE=$?
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "❌ ERROR: architecture.py falló con código $EXIT_CODE"
+            exit $EXIT_CODE
+          fi
+          echo "✅ Verificando archivos generados..."
+          # Buscar cualquier archivo PNG generado
+          PNG_FILES=$(find . -name "*.png" -type f | head -1)
+          if [ -n "$PNG_FILES" ]; then
+            echo "✅ ✅ ✅ DIAGRAMA GENERADO EXITOSAMENTE: $PNG_FILES"
+            ls -lh *.png
+          else
+            echo "❌ ERROR: No se encontró ningún archivo PNG"
+            ls -lah
+            exit 1
+          fi
+
+      - name: Verificar cambios en el diagrama
+        id: verify-changes
+        run: |
+          if [ -n "$(git status --porcelain docs/diagrams/*.png docs/diagrams/architecture.py)" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit y push del diagrama actualizado
+        if: steps.verify-changes.outputs.changed == 'true' && github.event_name == 'push'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add docs/diagrams/*.png
+          git add docs/diagrams/architecture.py
+          git add docs/diagrams/analysis_result.json || true
+          git add docs/diagrams/ai_refinement_report.json || true
+          git commit -m "docs: actualizar diagrama de arquitectura automáticamente [skip ci]" || exit 0
+          git push
+
+      - name: Verificar diagrama en PRs
+        if: github.event_name == 'pull_request' && steps.verify-changes.outputs.changed == 'true'
+        run: |
+          echo "⚠️ El diagrama PNG o architecture.py ha cambiado. Por favor, commitea los cambios generados."
+          exit 1
+
+      - name: Mostrar resumen del análisis
+        if: always()
+        run: |
+          echo "📊 Resumen del proceso:"
+          if [ -f docs/diagrams/analysis_result.json ]; then
+            echo "✅ analysis_result.json encontrado"
+            cat docs/diagrams/analysis_result.json | python -m json.tool || cat docs/diagrams/analysis_result.json
+          else
+            echo "⚠️ analysis_result.json no encontrado"
+          fi
+          if [ -f docs/diagrams/ai_refinement_report.json ]; then
+            echo "✅ ai_refinement_report.json encontrado"
+            echo "🤖 Resumen de refinamiento AI:"
+            cat docs/diagrams/ai_refinement_report.json | python -m json.tool | head -30 || cat docs/diagrams/ai_refinement_report.json | head -30
+          else
+            echo "⚠️ ai_refinement_report.json no encontrado (AI no se ejecutó o falló)"
+          fi

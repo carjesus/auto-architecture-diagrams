@@ -1,0 +1,29 @@
+# Example requirements.txt for projects using Auto Architecture Diagrams
+
+# Core dependency for diagram generation
+diagrams>=0.23.0
+
+# Example web framework dependencies
+fastapi==0.104.1
+uvicorn==0.24.0
+starlette==0.27.0
+
+# Example database dependencies
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
+pymongo==4.6.0
+
+# Example AWS dependencies
+boto3==1.34.0
+botocore==1.34.0
+
+# Example GraphQL dependencies
+strawberry-graphql==0.215.0
+
+# Example background job dependencies
+apscheduler==3.10.4
+
+# Example additional dependencies
+pydantic==2.5.0
+python-multipart==0.0.6
+httpx==0.25.2

@@ -1,0 +1,78 @@
+name: Generate Architecture Diagram
+
+on:
+  push:
+    paths:
+      - 'docs/diagrams/architecture.py'
+      - '.github/workflows/generate-diagram.yml'
+    branches:
+      - main
+      - develop
+      - master
+  pull_request:
+    paths:
+      - 'docs/diagrams/architecture.py'
+    branches:
+      - main
+      - develop
+      - master
+  workflow_dispatch:  # Permite ejecución manual
+
+jobs:
+  generate-diagram:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Necesario para hacer commit y push
+    
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar Graphviz
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y graphviz
+
+      - name: Instalar dependencias Python
+        run: |
+          pip install diagrams
+
+      - name: Generar diagrama
+        run: |
+          cd docs/diagrams
+          python architecture.py
+          echo "Verificando archivos generados..."
+          ls -la *.png || echo "⚠️ No se encontró el archivo PNG generado"
+
+      - name: Verificar cambios en el diagrama
+        id: verify-changes
+        run: |
+          if [ -n "$(git status --porcelain docs/diagrams/*.png)" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+          echo "Archivos PNG encontrados:"
+          ls -la docs/diagrams/*.png || echo "No hay archivos PNG"
+
+      - name: Commit y push del diagrama actualizado
+        if: steps.verify-changes.outputs.changed == 'true' && github.event_name == 'push'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add docs/diagrams/*.png
+          git commit -m "docs: actualizar diagrama de arquitectura [skip ci]" || exit 0
+          git push
+
+      - name: Verificar diagrama en PRs
+        if: github.event_name == 'pull_request' && steps.verify-changes.outputs.changed == 'true'
+        run: |
+          echo "⚠️ El diagrama PNG ha cambiado. Por favor, commitea los cambios del diagrama generado."
+          exit 1
